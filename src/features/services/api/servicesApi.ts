@@ -1,15 +1,16 @@
-import { apiClient } from '@/core/api/apiClient';
+import { apiClient, unwrap, type ApiResponse } from '@/core/api/apiClient';
 import type { Service, ServiceStatus } from '../types/services.types';
 
 export const servicesApi = {
+  /** GET /api/courier/services — servicios asignados al mensajero autenticado */
   getAll: (): Promise<Service[]> =>
-    apiClient.get<Service[]>('/api/courier/services').then((r) => r.data),
+    apiClient
+      .get<ApiResponse<Service[]>>('/api/courier/services')
+      .then(unwrap),
 
-  getById: (id: string): Promise<Service> =>
-    apiClient.get<Service>(`/api/courier/services/${id}`).then((r) => r.data),
-
+  /** POST /api/courier/services/:id/status — cambia el estado del servicio */
   updateStatus: (id: string, status: ServiceStatus): Promise<Service> =>
     apiClient
-      .post<Service>(`/api/courier/services/${id}/status`, { status })
-      .then((r) => r.data),
+      .post<ApiResponse<Service>>(`/api/courier/services/${id}/status`, { status })
+      .then(unwrap),
 };

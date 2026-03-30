@@ -36,7 +36,8 @@ export function useUploadEvidence(): UseUploadEvidenceReturn {
   }, []);
 
   const setImageUri = useCallback((uri: string) => {
-    setState((s) => ({ ...s, imageUri: uri, uploaded: false, error: null }));
+    // BUG-06/07 FIX: reset uploaded flag when user retakes photo
+    setState((s) => ({ ...s, imageUri: uri || null, uploaded: false, error: null }));
   }, []);
 
   const upload = useCallback(

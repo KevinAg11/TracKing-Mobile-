@@ -29,4 +29,6 @@ export interface LoginResponse {
   email: string;
   role: string;
   company_id: string;
+  /** Returned in body by the backend alongside the httpOnly cookie */
+  accessToken?: string;
 }

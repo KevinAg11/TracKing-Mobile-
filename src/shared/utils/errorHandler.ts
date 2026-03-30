@@ -1,18 +1,31 @@
+/**
+ * Maps HTTP status codes to user-facing Spanish messages.
+ * serverMessage comes from the backend error body.
+ *
+ * Backend error shape: { success: false, statusCode, error }
+ * NestJS validation errors: { message: string[] | string, error: string, statusCode: 400 }
+ */
 export function handleApiError(status: number, serverMessage?: string): string {
   switch (status) {
     case 400:
-      return serverMessage ?? 'Invalid request. Please check your input.';
+      return serverMessage ?? 'Solicitud invalida. Verifica los datos ingresados.';
     case 401:
-      return 'Session expired. Please log in again.';
+      return 'Sesion expirada. Por favor inicia sesion nuevamente.';
     case 403:
-      return 'Access denied.';
+      return 'Acceso denegado.';
     case 404:
-      return 'Resource not found.';
+      return 'Recurso no encontrado.';
+    case 409:
+      return serverMessage ?? 'Conflicto: el recurso ya existe.';
+    case 422:
+      return serverMessage ?? 'Operacion no permitida por reglas de negocio.';
     case 429:
-      return 'Too many requests — please wait before trying again.';
+      return 'Demasiadas solicitudes. Por favor espera antes de intentar de nuevo.';
     case 500:
-      return 'Server error — please try again later.';
+      return 'Error del servidor. Por favor intenta mas tarde.';
+    case 0:
+      return 'Sin conexion al servidor. Verifica tu red.';
     default:
-      return serverMessage ?? 'An unexpected error occurred.';
+      return serverMessage ?? 'Ocurrio un error inesperado.';
   }
 }

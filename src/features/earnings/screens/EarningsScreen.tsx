@@ -37,7 +37,7 @@ function LiquidationRow({ item }: { item: Liquidation }) {
 }
 
 export function EarningsScreen() {
-  const { summary, liquidations, loading, error, refresh } = useEarnings();
+  const { summary, liquidations, loading, refreshing, error, refresh } = useEarnings();
 
   if (loading) return <LoadingSpinner />;
   if (error) return <ErrorState message={error} onRetry={refresh} />;
@@ -62,13 +62,8 @@ export function EarningsScreen() {
             </View>
             <View style={styles.metaDivider} />
             <View style={styles.metaItem}>
-              <Text style={styles.metaValue}>{formatDate(summary.period_start)}</Text>
-              <Text style={styles.metaLabel}>Desde</Text>
-            </View>
-            <View style={styles.metaDivider} />
-            <View style={styles.metaItem}>
-              <Text style={styles.metaValue}>{formatDate(summary.period_end)}</Text>
-              <Text style={styles.metaLabel}>Hasta</Text>
+              <Text style={styles.metaValue}>{summary.total_settlements}</Text>
+              <Text style={styles.metaLabel}>Liquidaciones</Text>
             </View>
           </View>
         </View>
@@ -81,7 +76,7 @@ export function EarningsScreen() {
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => <LiquidationRow item={item} />}
         contentContainerStyle={styles.list}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Text style={styles.emptyText}>Sin liquidaciones registradas</Text>

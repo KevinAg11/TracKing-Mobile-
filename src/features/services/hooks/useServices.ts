@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { servicesApi } from '../api/servicesApi';
 import { useServicesStore } from '../store/servicesStore';
 import type { Service, ServiceStatus } from '../types/services.types';
 
-// Valid transitions — backend is source of truth, but we disable invalid UI actions
 const NEXT_STATUS: Partial<Record<ServiceStatus, ServiceStatus>> = {
   ASSIGNED: 'ACCEPTED',
   ACCEPTED: 'IN_TRANSIT',
@@ -18,31 +17,51 @@ export function nextStatus(current: ServiceStatus): ServiceStatus | null {
   return NEXT_STATUS[current] ?? null;
 }
 
+/**
+ * Full hook: fetches services from backend and exposes performAction.
+ * Use ONLY in ServicesScreen (list). ServiceDetailScreen uses useServiceDetail.
+ * BUG-04/11 FIX: prevents double-fetch from mounting in multiple screens.
+ */
 export function useServices() {
   const { services, setServices, updateService } = useServicesStore();
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const isFirstLoad = useRef(true);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await servicesApi.getAll();
-      setServices(data);
-    } catch (err: any) {
-      setError(err?.userMessage ?? 'Error al cargar servicios');
-    } finally {
-      setLoading(false);
-    }
-  }, [setServices]);
+  const fetchData = useCallback(
+    async (isRefresh: boolean) => {
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+      setError(null);
+      try {
+        const data = await servicesApi.getAll();
+        setServices(data);
+      } catch (err: any) {
+        setError(err?.userMessage ?? 'Error al cargar servicios');
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+        isFirstLoad.current = false;
+      }
+    },
+    [setServices],
+  );
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    fetchData(false);
+  }, [fetchData]);
+
+  const refresh = useCallback(() => fetchData(true), [fetchData]);
 
   const performAction = useCallback(
     async (service: Service): Promise<{ ok: boolean; error?: string }> => {
       const next = nextStatus(service.status);
-      if (!next) return { ok: false, error: 'Acción no disponible' };
+      if (!next) return { ok: false, error: 'Accion no disponible' };
 
       setActionLoading(service.id);
       try {
@@ -55,8 +74,38 @@ export function useServices() {
         setActionLoading(null);
       }
     },
-    [updateService]
+    [updateService],
   );
 
-  return { services, loading, error, actionLoading, refresh: load, performAction };
+  return { services, loading, refreshing, error, actionLoading, refresh, performAction };
+}
+
+/**
+ * Lightweight hook for ServiceDetailScreen.
+ * BUG-04/11 FIX: reads from store only — no fetch, no duplicate requests.
+ */
+export function useServiceDetail() {
+  const { updateService } = useServicesStore();
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  const performAction = useCallback(
+    async (service: Service): Promise<{ ok: boolean; error?: string }> => {
+      const next = nextStatus(service.status);
+      if (!next) return { ok: false, error: 'Accion no disponible' };
+
+      setActionLoading(service.id);
+      try {
+        const updated = await servicesApi.updateStatus(service.id, next);
+        updateService(updated);
+        return { ok: true };
+      } catch (err: any) {
+        return { ok: false, error: err?.userMessage ?? 'Error al actualizar servicio' };
+      } finally {
+        setActionLoading(null);
+      }
+    },
+    [updateService],
+  );
+
+  return { actionLoading, performAction };
 }

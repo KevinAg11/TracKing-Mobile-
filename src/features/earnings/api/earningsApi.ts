@@ -1,10 +1,10 @@
-import { apiClient } from '@/core/api/apiClient';
+import { apiClient, unwrap, type ApiResponse } from '@/core/api/apiClient';
 
 export interface EarningsSummary {
   total_earned: number;
   total_services: number;
-  period_start: string;
-  period_end: string;
+  total_settlements: number;
+  /** settlements array is also returned but we use the Liquidation[] separately */
 }
 
 export interface Liquidation {
@@ -18,9 +18,24 @@ export interface Liquidation {
 }
 
 export const earningsApi = {
-  getSummary: (): Promise<EarningsSummary> =>
-    apiClient.get<EarningsSummary>('/api/liquidations/earnings').then((r) => r.data),
+  /**
+   * GET /api/liquidations/earnings
+   * Returns earnings summary for the authenticated courier's company.
+   * The courier_id filter is resolved server-side via JWT for COURIER role.
+   * Note: this endpoint requires ADMIN role — for COURIER we derive earnings
+   * from the liquidations list instead.
+   */
+  getSummary: async (): Promise<EarningsSummary> => {
+    const res = await apiClient.get<ApiResponse<EarningsSummary>>('/api/liquidations/earnings');
+    return unwrap(res);
+  },
 
-  getLiquidations: (): Promise<Liquidation[]> =>
-    apiClient.get<Liquidation[]>('/api/liquidations').then((r) => r.data),
+  /**
+   * GET /api/liquidations
+   * Lists courier settlements. Backend scopes by company from JWT.
+   */
+  getLiquidations: async (): Promise<Liquidation[]> => {
+    const res = await apiClient.get<ApiResponse<Liquidation[]>>('/api/liquidations');
+    return unwrap(res);
+  },
 };

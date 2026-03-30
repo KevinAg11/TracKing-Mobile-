@@ -4,9 +4,9 @@ import {
   Text,
   FlatList,
   StyleSheet,
-  SafeAreaView,
   RefreshControl,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors } from '@/shared/ui/colors';
@@ -22,7 +22,7 @@ type Nav = NativeStackNavigationProp<ServicesStackParamList, 'ServicesList'>;
 
 export function ServicesScreen() {
   const navigation = useNavigation<Nav>();
-  const { services, loading, error, refresh } = useServices();
+  const { services, loading, refreshing, error, refresh } = useServices();
 
   if (loading) return <LoadingSpinner />;
   if (error) return <ErrorState message={error} onRetry={refresh} />;
@@ -43,7 +43,7 @@ export function ServicesScreen() {
           />
         )}
         contentContainerStyle={styles.list}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Text style={styles.emptyText}>Sin servicios asignados</Text>

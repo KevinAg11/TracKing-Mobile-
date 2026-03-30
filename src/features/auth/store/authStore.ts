@@ -8,7 +8,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   isAuthenticated: false,
 
   setSession: (user: CourierUser, token: string) => {
-    secureStorage.setToken(token);
+    // Persist token async — fire and forget (restore hook reads it on next launch)
+    if (token) secureStorage.setToken(token);
     set({ user, accessToken: token, isAuthenticated: true });
   },
 

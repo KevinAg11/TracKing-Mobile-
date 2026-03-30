@@ -19,7 +19,7 @@ import { useDashboard } from '../hooks/useDashboard';
 
 export function HomeScreen() {
   const user = useAuthStore((s) => s.user);
-  const { kpis, activeService, loading, error, refresh } = useDashboard();
+  const { kpis, activeService, loading, refreshing, error, refresh } = useDashboard();
 
   if (loading) return <LoadingSpinner />;
   if (error) return <ErrorState message={error} onRetry={refresh} />;
@@ -32,7 +32,7 @@ export function HomeScreen() {
       />
       <ScrollView
         contentContainerStyle={styles.scroll}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
       >
         {/* KPIs */}
         <View style={styles.kpiRow}>

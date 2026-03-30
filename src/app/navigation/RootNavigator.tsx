@@ -1,10 +1,9 @@
 import React from 'react';
+import { View, ActivityIndicator } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuthStore } from '@/features/auth/store/authStore';
+import { useSessionRestore } from '@/core/hooks/useSessionRestore';
 import { TabNavigator } from './TabNavigator';
-
-// LoginScreen imported lazily to avoid circular deps at setup time
-// Will be replaced with real screen in Phase 01
 import { LoginScreen } from '@/features/auth/screens/LoginScreen';
 
 export type RootStackParamList = {
@@ -16,6 +15,15 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export function RootNavigator() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const { isRestoring } = useSessionRestore();
+
+  if (isRestoring) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" />
+      </View>
+    );
+  }
 
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>

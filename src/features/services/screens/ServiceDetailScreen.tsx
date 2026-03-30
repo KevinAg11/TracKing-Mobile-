@@ -14,7 +14,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors } from '@/shared/ui/colors';
 import { fontSize, fontWeight } from '@/shared/ui/typography';
 import { StatusBadge } from '../components/StatusBadge';
-import { useServices, canTransition, nextStatus } from '../hooks/useServices';
+import { useServiceDetail, canTransition, nextStatus } from '../hooks/useServices';
 import { useServicesStore } from '../store/servicesStore';
 import { useLocation } from '@/features/tracking/hooks/useLocation';
 import { EvidenceCapture } from '@/features/evidence/components/EvidenceCapture';
@@ -31,13 +31,24 @@ const ACTION_LABEL: Record<string, string> = {
 export function ServiceDetailScreen() {
   const route = useRoute<Route>();
   const { serviceId } = route.params;
-  const { performAction, actionLoading } = useServices();
+  const { performAction, actionLoading } = useServiceDetail();
   const service = useServicesStore((s) => s.services.find((x) => x.id === serviceId));
+  const servicesLoaded = useServicesStore((s) => s.services.length > 0 || s.loaded);
   const [localError, setLocalError] = useState<string | null>(null);
   const [evidenceUploaded, setEvidenceUploaded] = useState(false);
 
   // Tracking: send location every 15s only while service is IN_TRANSIT
   useLocation({ active: service?.status === 'IN_TRANSIT' });
+
+  if (!servicesLoaded) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (!service) {
     return (

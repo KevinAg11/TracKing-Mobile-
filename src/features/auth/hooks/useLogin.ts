@@ -7,7 +7,7 @@ interface UseLoginResult {
   login: (email: string, password: string) => Promise<void>;
   isLoading: boolean;
   error: string | null;
-  cooldownSeconds: number; // > 0 when rate-limited
+  cooldownSeconds: number;
 }
 
 export function useLogin(): UseLoginResult {
@@ -34,7 +34,15 @@ export function useLogin(): UseLoginResult {
     setError(null);
     setIsLoading(true);
     try {
+      // Backend returns: { id, name, email, role, company_id, accessToken }
       const userData = await authApi.login({ email, password });
+
+      // Only allow COURIER role to use the mobile app
+      if (userData.role !== 'COURIER') {
+        setError('Esta app es exclusiva para mensajeros.');
+        return;
+      }
+
       const user: CourierUser = {
         id: userData.id,
         name: userData.name,
@@ -43,20 +51,20 @@ export function useLogin(): UseLoginResult {
         company_id: userData.company_id,
         operationalStatus: 'UNAVAILABLE',
       };
-      // Token comes via httpOnly cookie; store user + empty token string for Bearer header
-      // The actual token value is managed by the cookie; we store a sentinel for the interceptor
-      setSession(user, '');
+
+      // accessToken is returned in the body AND set as httpOnly cookie
+      setSession(user, userData.accessToken ?? '');
     } catch (err: unknown) {
       const apiErr = err as { response?: { status?: number }; userMessage?: string };
       const status = apiErr?.response?.status;
 
       if (status === 429) {
-        setError('Too many login attempts. Please wait.');
+        setError('Demasiados intentos. Por favor espera.');
         startCooldown(60);
       } else if (status === 401) {
-        setError('Invalid email or password.');
+        setError('Email o contraseña incorrectos.');
       } else {
-        setError(apiErr?.userMessage ?? 'Login failed. Please try again.');
+        setError(apiErr?.userMessage ?? 'Error al iniciar sesión. Intenta de nuevo.');
       }
     } finally {
       setIsLoading(false);
