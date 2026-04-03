@@ -36,10 +36,13 @@ export function useUploadEvidence(): UseUploadEvidenceReturn {
   }, []);
 
   const setImageUri = useCallback((uri: string) => {
-    // BUG-06/07 FIX: reset uploaded flag when user retakes photo
     setState((s) => ({ ...s, imageUri: uri || null, uploaded: false, error: null }));
   }, []);
 
+  /**
+   * Sube la foto al backend como multipart/form-data.
+   * El backend espera el campo "file" con la imagen binaria.
+   */
   const upload = useCallback(
     async (serviceId: string): Promise<boolean> => {
       if (!state.imageUri) {
@@ -48,7 +51,7 @@ export function useUploadEvidence(): UseUploadEvidenceReturn {
       }
       setState((s) => ({ ...s, uploading: true, error: null }));
       try {
-        await evidenceApi.upload(serviceId, { image_url: state.imageUri });
+        await evidenceApi.upload(serviceId, state.imageUri);
         setState((s) => ({ ...s, uploading: false, uploaded: true }));
         return true;
       } catch (err: any) {
@@ -60,7 +63,7 @@ export function useUploadEvidence(): UseUploadEvidenceReturn {
         return false;
       }
     },
-    [state.imageUri]
+    [state.imageUri],
   );
 
   const reset = useCallback(() => {

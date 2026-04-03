@@ -6,7 +6,7 @@ import { handleApiError } from '@/shared/utils/errorHandler';
  * celular, no a la PC. Se usa la IP local de la máquina de desarrollo.
  * Si cambias de red, actualiza esta IP con la nueva dirección de tu PC.
  */
-const BASE_URL = 'http://192.168.1.11:3000';
+const BASE_URL = 'http://192.168.1.9:3000';
 
 /** Wrapper estandar de todas las respuestas del backend */
 export interface ApiResponse<T> {
