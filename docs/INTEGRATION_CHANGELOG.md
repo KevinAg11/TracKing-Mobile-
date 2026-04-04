@@ -608,3 +608,213 @@ Esto era incorrecto — el endpoint espera `multipart/form-data`, no JSON.
 ---
 
 *Actualización: 3 de abril de 2026 — Alineación módulo evidencias v1.1*
+
+
+---
+
+## 9. Implementación completa del sistema de tracking en tiempo real (Abril 2026)
+
+### Contexto
+
+Se implementó el punto 5 de la guía `TRACKING_MOBILE_GUIDE.md` — reporte de ubicación en tiempo real. El sistema envía la posición del mensajero al backend cada 15 segundos mientras tiene un servicio en estado `IN_TRANSIT`, tanto en foreground como en background.
+
+---
+
+### Análisis del flujo backend (solo lectura — sin modificaciones)
+
+El backend maneja el estado del mensajero así:
+
+| Evento | Estado mensajero |
+|---|---|
+| Admin asigna servicio | `AVAILABLE` → `IN_SERVICE` |
+| Mensajero acepta (`ACCEPTED`) | sigue `IN_SERVICE` |
+| Mensajero sale a ruta (`IN_TRANSIT`) | sigue `IN_SERVICE` |
+| Mensajero entrega (`DELIVERED`) | `IN_SERVICE` → `AVAILABLE` |
+
+El endpoint `POST /api/courier/location` solo acepta ubicaciones cuando el mensajero está `IN_SERVICE`. Cuando el servicio llega a `DELIVERED`, el backend responde `400` a los siguientes envíos de ubicación.
+
+El mobile activa el tracking cuando el servicio está `IN_TRANSIT` — en ese momento el mensajero ya está `IN_SERVICE` desde la asignación. El flujo es correcto sin modificar el backend.
+
+---
+
+### CAMBIO-22 — Instalación de `expo-task-manager`
+
+**Problema:** El background tracking requiere `expo-task-manager` pero no estaba instalado en el proyecto.
+
+**Solución:** Instalado con `npx expo install expo-task-manager` (versión compatible con SDK 55).
+
+**Archivos modificados:**
+- `package.json` — dependencia agregada
+
+---
+
+### CAMBIO-23 — Permisos de background location en `app.json`
+
+**Problema:** `app.json` no tenía habilitado el background location para Android, lo que impedía que la task de background se registrara correctamente.
+
+**Solución:** Agregados `isAndroidBackgroundLocationEnabled: true` e `isAndroidForegroundServiceEnabled: true` al plugin de `expo-location`.
+
+```json
+["expo-location", {
+  "isAndroidBackgroundLocationEnabled": true,
+  "isAndroidForegroundServiceEnabled": true
+}]
+```
+
+**Archivos modificados:**
+- `app.json`
+
+---
+
+### CAMBIO-24 — Creación de la task de background location
+
+**Problema:** No existía ninguna task de background para tracking. Sin esto, cuando el mensajero minimiza la app, el tracking se detiene.
+
+**Solución:** Creado `src/features/tracking/tasks/backgroundLocationTask.ts` con la task global definida a nivel de módulo (requisito de `expo-task-manager`).
+
+Comportamiento de la task:
+- Se ejecuta cada 15 segundos o cada 10 metros (lo que ocurra primero)
+- Envía `{ latitude, longitude, accuracy }` al backend
+- Si el backend responde `400`, detiene la task automáticamente
+- Errores de red se swallean silenciosamente
+
+**Archivos creados:**
+- `src/features/tracking/tasks/backgroundLocationTask.ts`
+
+---
+
+### CAMBIO-25 — Registro de la task en `index.ts`
+
+**Problema:** La task de background debe estar definida antes de que el árbol React se monte. Sin el import en el entry point, la task no se registra y el background tracking falla silenciosamente.
+
+**Solución:** Agregado el import de la task en `index.ts` antes de `registerRootComponent`.
+
+```typescript
+import './src/features/tracking/tasks/backgroundLocationTask';
+```
+
+**Archivos modificados:**
+- `index.ts`
+
+---
+
+### CAMBIO-26 — Reescritura de `useLocation` con foreground + background + stop en 400
+
+**Problema:** El hook anterior solo tenía foreground tracking con `setInterval`. No tenía:
+- Background tracking con `expo-task-manager`
+- Detención automática cuando el backend responde `400`
+- Gestión correcta del ciclo de vida (start/stop de la task de background)
+
+**Solución:** Reescrito completamente con:
+
+- `requestForegroundPermission` — solicita permiso de foreground (cacheado en ref)
+- `requestBackgroundPermission` — solicita permiso de background (cacheado en ref)
+- `startBackground` — inicia la task con `timeInterval: 15000` y `distanceInterval: 10`
+- `stopForeground` / `stopBackground` / `stopAll` — limpieza correcta
+- `sendLocation` — detecta `err.response.status === 400` y detiene todo
+- `stoppedByBackend` ref — evita envíos adicionales después de un 400
+- Reset del flag `stoppedByBackend` al desactivar (permite reactivación limpia)
+
+**Ciclo de vida:**
+```
+active=true  → startBackground() + sendLocation() + setInterval(15s)
+active=false → clearInterval + stopLocationUpdatesAsync
+400 recibido → stoppedByBackend=true + clearInterval + stopLocationUpdatesAsync
+```
+
+**Archivos modificados:**
+- `src/features/tracking/hooks/useLocation.ts`
+
+---
+
+### CAMBIO-27 — Corrección de `locationApi.ts` (versión en disco desactualizada)
+
+**Problema:** El archivo en disco tenía la versión anterior con `unwrap` importado y retorno `Promise<unknown>`. Aunque el error 400 se propagaba correctamente (el interceptor rechaza antes de llegar a `unwrap`), el código era incorrecto y confuso.
+
+**Causa raíz:** Una escritura anterior no se persistió correctamente en disco.
+
+**Solución:** Reescrito con `async/await` limpio, sin `unwrap`, retornando `Promise<void>`. El error axios original se propaga para que `useLocation` pueda inspeccionar `err.response.status`.
+
+**Archivos modificados:**
+- `src/features/tracking/api/locationApi.ts`
+
+---
+
+### CAMBIO-28 — Corrección del loop duplicado en `TrackingMap`
+
+**Problema:** `TrackingMap.tsx` tenía su propio `setInterval` de 15 segundos llamando a `ExpoLocation.getCurrentPositionAsync`, duplicando exactamente el loop de `useLocation`. Esto creaba dos procesos de GPS simultáneos y era la causa de la advertencia de "múltiples hosts" en el debugger.
+
+**Solución:** Eliminado el `setInterval` de `TrackingMap`. El componente ahora hace una sola lectura de ubicación al activarse (para mostrar coordenadas en pantalla). El tracking periódico queda exclusivamente en `useLocation`.
+
+**Archivos modificados:**
+- `src/features/tracking/components/TrackingMap.tsx`
+
+---
+
+### CAMBIO-29 — Desactivación del reachability check de NetInfo
+
+**Problema:** `@react-native-community/netinfo` hace ping por defecto a `clients3.google.com` para verificar conectividad a internet. Esto introducía un segundo host externo en la app, causando la advertencia del debugger de React Native sobre "múltiples hosts".
+
+**Solución:** Configurado NetInfo con `reachabilityShouldRun: () => false` para deshabilitar el ping externo. La detección de conectividad sigue funcionando basándose en el estado de la interfaz de red del dispositivo.
+
+**Archivos modificados:**
+- `src/core/hooks/useNetworkStatus.ts`
+
+---
+
+### CAMBIO-30 — Suite de tests completa para `useLocation`
+
+**Problema:** El test existente tenía cobertura parcial — no cubría background tracking, stop en 400, ni reactivación después de errores.
+
+**Solución:** Reescrita la suite completa con 18 tests organizados en 5 grupos:
+
+| Grupo | Tests |
+|---|---|
+| inactive | No envía, no pide permisos |
+| foreground tracking | Envío inmediato, intervalo 15s/30s, permiso denegado, detención |
+| error handling | Errores de red silenciosos, stop en 400 (foreground + background), no stop en otros errores |
+| background tracking | Permiso, inicio con config correcta, no duplica, no inicia sin permiso, detiene al desactivar |
+| reactivación | Reanuda después de desactivar, resetea flag de stop-por-400 |
+
+Resultado: **18/18 tests pasan**.
+
+**Archivos modificados:**
+- `src/__tests__/tracking/useLocation.test.ts`
+
+---
+
+### CAMBIO-31 — Corrección del spinner infinito al iniciar la app
+
+**Problema:** Si el backend no estaba disponible al iniciar la app, `useSessionRestore` nunca terminaba y la app quedaba en el spinner de carga indefinidamente.
+
+**Causa raíz:** `apiClient` no tenía timeout configurado. Una request a `/api/courier/me` podía colgar indefinidamente si el backend no respondía.
+
+**Solución:**
+- Agregado `timeout: 10_000` al `apiClient` (10 segundos máximo por request)
+- Reescrito `useSessionRestore` con un `safetyTimer` de 8 segundos que desbloquea la app si la restauración no termina a tiempo
+- Variable `done` para evitar doble setState y proteger contra componente desmontado
+
+**Archivos modificados:**
+- `src/core/api/apiClient.ts`
+- `src/core/hooks/useSessionRestore.ts`
+
+---
+
+### Resumen de bugs corregidos en esta sesión
+
+| ID | Problema | Impacto | Resolución |
+|---|---|---|---|
+| BUG-22 | `expo-task-manager` no instalado | Background tracking imposible | Instalado con expo install |
+| BUG-23 | Background location no habilitado en app.json | Task de background no se registraba en Android | Flags agregados al plugin |
+| BUG-24 | Task de background no definida | Sin tracking al minimizar la app | `backgroundLocationTask.ts` creado |
+| BUG-25 | Task no importada en entry point | Task no disponible antes del mount de React | Import en `index.ts` |
+| BUG-26 | `useLocation` sin background ni stop en 400 | Tracking solo en foreground, sin detención automática | Hook reescrito completo |
+| BUG-27 | `locationApi.ts` con versión desactualizada en disco | Código incorrecto, import innecesario | Reescrito con async/await limpio |
+| BUG-28 | `TrackingMap` con loop de GPS duplicado | Dos procesos GPS simultáneos, advertencia de múltiples hosts | Loop eliminado del componente |
+| BUG-29 | NetInfo hacía ping a Google | Segundo host externo, advertencia del debugger | `reachabilityShouldRun: false` |
+| BUG-30 | Tests de tracking con cobertura parcial | Casos críticos sin validar | Suite completa de 18 tests |
+| BUG-31 | App quedaba cargando si backend no respondía | UX bloqueada indefinidamente | Timeout en apiClient + safetyTimer |
+
+---
+
+*Actualización: 3 de abril de 2026 — Sistema de tracking v1.2*
