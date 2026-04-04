@@ -491,4 +491,120 @@ src/
 
 ---
 
-*Documentación generada el 30 de marzo de 2026 — TracKing Mobile Integration v1.0*
+---
+
+## 8. Alineación del módulo de evidencias con el backend (Abril 2026)
+
+### Contexto
+
+Se realizó un análisis completo del módulo de subir evidencia comparando la implementación del backend (`CourierMobileController`, `SubirEvidenciaUseCase`, `SupabaseStorageService`) contra el código del mobile (`evidenceApi.ts`, `useUploadEvidence.ts`). Se encontraron tres discrepancias críticas que impedían el funcionamiento correcto.
+
+---
+
+### CAMBIO-16 — Corrección del formato de envío de evidencia (JSON → multipart/form-data)
+
+**Problema:** `evidenceApi.upload` enviaba un body JSON `{ image_url: string }` al backend. La app fallaba silenciosamente — el backend recibía el request pero no encontraba el archivo.
+
+**Causa raíz:** El backend espera `multipart/form-data` con el campo `file` (binario). El mobile enviaba JSON con una URL de archivo local, que el backend no puede procesar.
+
+**Solución:** `evidenceApi.upload` ahora construye un `FormData` con el archivo binario:
+
+```typescript
+const formData = new FormData();
+formData.append('file', { uri: imageUri, name: 'evidencia.jpg', type: 'image/jpeg' } as any);
+```
+
+Se eliminó la interfaz `EvidencePayload` obsoleta. La firma cambió de `upload(serviceId, payload: EvidencePayload)` a `upload(serviceId, imageUri: string)`.
+
+**Archivos modificados:**
+- `src/features/evidence/api/evidenceApi.ts`
+
+---
+
+### CAMBIO-17 — Corrección del tipo `EvidenceResponse`
+
+**Problema:** `EvidenceResponse` tenía el campo `created_at: string` que no existe en el modelo del backend. El campo real es `registration_date`.
+
+**Causa raíz:** El tipo fue escrito manualmente sin verificar el schema de Prisma del backend.
+
+**Solución:** Campo corregido a `registration_date: string`. Se agregó `company_id: string` que también retorna el backend.
+
+**Archivos modificados:**
+- `src/features/evidence/api/evidenceApi.ts`
+
+---
+
+### CAMBIO-18 — Corrección de la API de permisos de cámara (`expo-camera` v55)
+
+**Problema (iteración 1):** El hook `useUploadEvidence` importaba `* as ImagePicker from 'expo-image-picker'` pero ese paquete no está instalado en el proyecto. La app crasheaba con `UnableToResolveError: expo-image-picker could not be found`.
+
+**Causa raíz:** Se usó `expo-image-picker` asumiendo que estaba instalado. El proyecto solo tiene `expo-camera ~55.0.11`.
+
+**Problema (iteración 2):** Al corregir el import a `expo-camera`, se usó `requestCameraPermissionsAsync` como export directo, pero en `expo-camera` v55 esa función está dentro del objeto `Camera` (legacy namespace), no como export de módulo.
+
+**Causa raíz:** Cambio de API entre versiones de `expo-camera`. En v55 los exports son: `CameraView`, `Camera` (objeto con métodos estáticos), `useCameraPermissions`.
+
+**Solución final:** Se usa `Camera.requestCameraPermissionsAsync()` del objeto `Camera` exportado por `expo-camera`.
+
+**Archivos modificados:**
+- `src/features/evidence/hooks/useUploadEvidence.ts`
+
+---
+
+### CAMBIO-19 — Restauración de `setImageUri` en el hook
+
+**Problema:** Al refactorizar el hook se reemplazó `setImageUri` por `takePhoto`, rompiendo `EvidenceCapture` que llama `setImageUri(photo.uri)` directamente después de capturar con su propio `cameraRef`.
+
+**Causa raíz:** `EvidenceCapture` ya maneja su propio `CameraView` con ref y llama `takePictureAsync` directamente. El hook solo necesita gestionar el estado de la URI, no la captura.
+
+**Solución:** Se restauró `setImageUri(uri: string)` en el hook. El componente `EvidenceCapture` mantiene su `cameraRef` propio y llama `setImageUri` con la URI resultante. El hook no necesita exponer `cameraRef`.
+
+**Archivos modificados:**
+- `src/features/evidence/hooks/useUploadEvidence.ts`
+
+---
+
+### CAMBIO-20 — Corrección del flujo documentado en las guías
+
+**Problema:** El paso 9 del flujo completo en ambas copias de `TRACKING_MOBILE_GUIDE.md` decía:
+```
+9. Subir evidencia   POST /api/courier/services/:id/evidence  { "image_url": "..." }
+```
+Esto era incorrecto — el endpoint espera `multipart/form-data`, no JSON.
+
+**Solución:** Corregido en ambas copias:
+```
+9. Subir evidencia   POST /api/courier/services/:id/evidence  multipart/form-data (campo: file)
+```
+
+**Archivos modificados:**
+- `docs/TRACKING_MOBILE_GUIDE (1).md`
+- `TracKing-backend/TRACKING_MOBILE_GUIDE (1).md`
+
+---
+
+### CAMBIO-21 — Actualización de `fase-4-evidencias.md` (backend)
+
+**Problema:** La documentación del backend solo listaba el endpoint `/api/services/:id/evidence` para subir evidencia, omitiendo el endpoint del courier mobile `/api/courier/services/:id/evidence`.
+
+**Solución:** Se actualizó la tabla de endpoints para documentar ambas rutas, se aclaró que no se debe setear `Content-Type` manualmente en el cliente React Native, y se separaron los formatos de request para app móvil y panel web.
+
+**Archivos modificados:**
+- `TracKing-backend/docs/fase-4-evidencias.md`
+
+---
+
+### Resumen de bugs corregidos en esta sesión
+
+| ID | Problema | Impacto | Resolución |
+|---|---|---|---|
+| BUG-16 | `evidenceApi` enviaba JSON en lugar de `multipart/form-data` | Upload de evidencia nunca funcionaba | `FormData` con campo `file` binario |
+| BUG-17 | Campo `created_at` inexistente en `EvidenceResponse` | Error de tipo en runtime al leer la respuesta | Corregido a `registration_date` |
+| BUG-18 | Import de `expo-image-picker` no instalado | Crash al cargar la pantalla de detalle | Reemplazado por `expo-camera` v55 |
+| BUG-19 | API de permisos incorrecta en `expo-camera` v55 | Error de módulo en runtime | `Camera.requestCameraPermissionsAsync()` |
+| BUG-20 | `setImageUri` eliminado del hook | `EvidenceCapture` crasheaba con `TypeError` | Restaurado en el hook |
+| BUG-21 | Documentación indicaba body JSON para evidencia | Confusión para futuros desarrolladores | Guías corregidas en ambos repos |
+
+---
+
+*Actualización: 3 de abril de 2026 — Alineación módulo evidencias v1.1*

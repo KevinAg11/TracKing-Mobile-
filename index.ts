@@ -1,5 +1,9 @@
 import { registerRootComponent } from 'expo';
 
+// Background location task must be defined before the React tree mounts.
+// This import registers the task with expo-task-manager at module load time.
+import './src/features/tracking/tasks/backgroundLocationTask';
+
 import App from './App';
 
 // registerRootComponent calls AppRegistry.registerComponent('main', () => App);

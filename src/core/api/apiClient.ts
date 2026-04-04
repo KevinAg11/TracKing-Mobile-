@@ -23,6 +23,7 @@ export const apiClient = axios.create({
   baseURL: BASE_URL,
   withCredentials: true, // send httpOnly cookies automatically
   headers: { 'Content-Type': 'application/json' },
+  timeout: 10_000, // 10s — evita que la app quede cargando si el backend no responde
 });
 
 // Lazy import to avoid circular dependency: apiClient <- authStore <- apiClient

@@ -15,6 +15,10 @@ interface TrackingMapProps {
 
 /**
  * Displays the courier's current GPS coordinates while a service is active.
+ * Uses a single location read on mount — the actual periodic tracking is
+ * handled by useLocation (ServiceDetailScreen). This component only shows
+ * the current position for display purposes, without creating a second loop.
+ *
  * Replace the coordinate display with a MapView (react-native-maps) when
  * that dependency is added to the project.
  */
@@ -28,13 +32,13 @@ export function TrackingMap({ active }: TrackingMapProps) {
 
     let cancelled = false;
 
-    const fetch = async () => {
+    const getLocation = async () => {
       setLoading(true);
       setError(null);
       try {
         const { status } = await ExpoLocation.requestForegroundPermissionsAsync();
         if (status !== 'granted') {
-          setError('Permiso de ubicación denegado');
+          if (!cancelled) setError('Permiso de ubicación denegado');
           return;
         }
         const loc = await ExpoLocation.getCurrentPositionAsync({
@@ -53,11 +57,12 @@ export function TrackingMap({ active }: TrackingMapProps) {
       }
     };
 
-    fetch();
-    const interval = setInterval(fetch, 15_000);
+    // Single read on activation — useLocation in ServiceDetailScreen
+    // handles the periodic 15s loop that sends data to the backend.
+    getLocation();
+
     return () => {
       cancelled = true;
-      clearInterval(interval);
     };
   }, [active]);
 

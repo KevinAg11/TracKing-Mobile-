@@ -32,7 +32,9 @@
         "expo-location",
         {
           "locationAlwaysAndWhenInUsePermission": "Esta app necesita acceso a tu ubicación para rastrear tus entregas.",
-          "locationWhenInUsePermission": "Esta app necesita acceso a tu ubicación para rastrear tus entregas."
+          "locationWhenInUsePermission": "Esta app necesita acceso a tu ubicación para rastrear tus entregas.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
         }
       ],
       [

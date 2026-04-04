@@ -20,8 +20,13 @@
       "^expo$": "<rootDir>/src/__tests__/__mocks__/expo.js",
       "^expo/(.*)$": "<rootDir>/src/__tests__/__mocks__/expo.js"
     },
-    "testPathIgnorePatterns": ["/node_modules/", "/__mocks__/"],
-    "setupFiles": ["./jest.setup.js"]
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "/__mocks__/"
+    ],
+    "setupFiles": [
+      "./jest.setup.js"
+    ]
   },
   "dependencies": {
     "@react-native-community/netinfo": "11.5.2",
@@ -35,6 +40,7 @@
     "expo-location": "~55.1.4",
     "expo-secure-store": "~55.0.9",
     "expo-status-bar": "~55.0.4",
+    "expo-task-manager": "~55.0.12",
     "react": "19.2.0",
     "react-hook-form": "^7.72.0",
     "react-native": "0.83.2",
