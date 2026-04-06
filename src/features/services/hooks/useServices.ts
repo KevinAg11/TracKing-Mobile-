@@ -87,6 +87,7 @@ export function useServices() {
 export function useServiceDetail() {
   const { updateService } = useServicesStore();
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [paymentLoading, setPaymentLoading] = useState(false);
 
   const performAction = useCallback(
     async (service: Service): Promise<{ ok: boolean; error?: string }> => {
@@ -107,5 +108,24 @@ export function useServiceDetail() {
     [updateService],
   );
 
-  return { actionLoading, performAction };
+  const performPaymentAction = useCallback(
+    async (
+      serviceId: string,
+      payment_status: import('../types/services.types').PaymentStatus,
+    ): Promise<{ ok: boolean; error?: string }> => {
+      setPaymentLoading(true);
+      try {
+        const updated = await servicesApi.updatePayment(serviceId, payment_status);
+        updateService(updated);
+        return { ok: true };
+      } catch (err: any) {
+        return { ok: false, error: err?.userMessage ?? 'Error al actualizar pago' };
+      } finally {
+        setPaymentLoading(false);
+      }
+    },
+    [updateService],
+  );
+
+  return { actionLoading, performAction, paymentLoading, performPaymentAction };
 }

@@ -48,8 +48,7 @@ export function useSessionRestore() {
           email: profile.user.email,
           role: 'COURIER',
           company_id: profile.company_id,
-          operationalStatus:
-            profile.operational_status === 'IN_SERVICE' ? 'AVAILABLE' : profile.operational_status,
+          operationalStatus: profile.operational_status,
         };
 
         setSession(user, token);

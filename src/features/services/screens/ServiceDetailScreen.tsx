@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute } from '@react-navigation/native';
@@ -16,9 +17,11 @@ import { fontSize, fontWeight } from '@/shared/ui/typography';
 import { StatusBadge } from '../components/StatusBadge';
 import { useServiceDetail, canTransition, nextStatus } from '../hooks/useServices';
 import { useServicesStore } from '../store/servicesStore';
+import { useAuthStore } from '@/features/auth/store/authStore';
 import { useLocation } from '@/features/tracking/hooks/useLocation';
 import { EvidenceCapture } from '@/features/evidence/components/EvidenceCapture';
 import type { ServicesStackParamList } from '../navigation/ServicesNavigator';
+import type { PaymentStatus } from '../types/services.types';
 
 type Route = NativeStackScreenProps<ServicesStackParamList, 'ServiceDetail'>['route'];
 
@@ -28,17 +31,35 @@ const ACTION_LABEL: Record<string, string> = {
   DELIVERED: 'Finalizar entrega',
 };
 
+const PAYMENT_METHOD_LABEL: Record<string, string> = {
+  CASH: 'Efectivo',
+  TRANSFER: 'Transferencia',
+  CREDIT: 'Crédito',
+};
+
+const PAYMENT_STATUS_LABEL: Record<string, string> = {
+  PAID: 'Pagado',
+  UNPAID: 'No pagado',
+};
+
 export function ServiceDetailScreen() {
   const route = useRoute<Route>();
   const { serviceId } = route.params;
-  const { performAction, actionLoading } = useServiceDetail();
+  const { performAction, actionLoading, performPaymentAction, paymentLoading } = useServiceDetail();
   const service = useServicesStore((s) => s.services.find((x) => x.id === serviceId));
   const servicesLoaded = useServicesStore((s) => s.services.length > 0 || s.loaded);
+  const operationalStatus = useAuthStore((s) => s.user?.operationalStatus);
+
   const [localError, setLocalError] = useState<string | null>(null);
   const [evidenceUploaded, setEvidenceUploaded] = useState(false);
+  // Payment modal — shown after DELIVERED transition
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
 
-  // Tracking: send location every 15s only while service is IN_TRANSIT
-  useLocation({ active: service?.status === 'IN_TRANSIT' });
+  // Tracking: send location when mensajero is IN_SERVICE (backend state)
+  // This aligns with the backend rule: only IN_SERVICE couriers can send location.
+  const { latitude, longitude, permissionDenied } = useLocation({
+    active: operationalStatus === 'IN_SERVICE',
+  });
 
   if (!servicesLoaded) {
     return (
@@ -61,9 +82,10 @@ export function ServiceDetailScreen() {
   const next = nextStatus(service.status);
   const canAct = canTransition(service.status);
   const isLoading = actionLoading === service.id;
-  // Block "Finalizar" until evidence is uploaded (backend also enforces this)
   const needsEvidence = service.status === 'IN_TRANSIT';
   const actionBlocked = needsEvidence && !evidenceUploaded;
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
 
   const handleAction = async () => {
     setLocalError(null);
@@ -71,8 +93,23 @@ export function ServiceDetailScreen() {
     if (!result.ok) {
       setLocalError(result.error ?? 'Error desconocido');
       Alert.alert('Error', result.error ?? 'No se pudo actualizar el servicio');
+      return;
+    }
+    // After transitioning to DELIVERED, ask about payment
+    if (next === 'DELIVERED') {
+      setShowPaymentModal(true);
     }
   };
+
+  const handlePayment = async (status: PaymentStatus) => {
+    setShowPaymentModal(false);
+    const result = await performPaymentAction(service.id, status);
+    if (!result.ok) {
+      Alert.alert('Aviso', result.error ?? 'No se pudo actualizar el estado de pago');
+    }
+  };
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -93,7 +130,15 @@ export function ServiceDetailScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Paquete</Text>
           <Row label="Detalle" value={service.package_details} />
-          <Row label="Pago" value={service.payment_method} />
+          <Row
+            label="Método de pago"
+            value={PAYMENT_METHOD_LABEL[service.payment_method] ?? service.payment_method}
+          />
+          <Row
+            label="Estado de pago"
+            value={PAYMENT_STATUS_LABEL[service.payment_status] ?? service.payment_status}
+            highlight={service.payment_status === 'UNPAID'}
+          />
           {service.notes_observations ? (
             <Row label="Notas" value={service.notes_observations} />
           ) : null}
@@ -102,9 +147,9 @@ export function ServiceDetailScreen() {
         {/* Pricing */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Valores</Text>
-          <Row label="Domicilio" value={`$${service.delivery_price.toFixed(2)}`} />
-          <Row label="Producto" value={`$${service.product_price.toFixed(2)}`} />
-          <Row label="Total" value={`$${service.total_price.toFixed(2)}`} highlight />
+          <Row label="Domicilio" value={`${service.delivery_price.toFixed(2)}`} />
+          <Row label="Producto" value={`${service.product_price.toFixed(2)}`} />
+          <Row label="Total" value={`${service.total_price.toFixed(2)}`} highlight />
         </View>
 
         {/* Evidence — required before DELIVERED */}
@@ -137,9 +182,91 @@ export function ServiceDetailScreen() {
           </TouchableOpacity>
         </View>
       ) : null}
+
+      {/* Payment modal — shown after DELIVERED */}
+      <PaymentModal
+        visible={showPaymentModal}
+        loading={paymentLoading}
+        currentStatus={service.payment_status}
+        totalPrice={service.total_price}
+        onSelect={handlePayment}
+        onDismiss={() => setShowPaymentModal(false)}
+      />
     </SafeAreaView>
   );
 }
+
+// ── Payment Modal ─────────────────────────────────────────────────────────────
+
+interface PaymentModalProps {
+  visible: boolean;
+  loading: boolean;
+  currentStatus: PaymentStatus;
+  totalPrice: number;
+  onSelect: (status: PaymentStatus) => void;
+  onDismiss: () => void;
+}
+
+function PaymentModal({
+  visible,
+  loading,
+  currentStatus,
+  totalPrice,
+  onSelect,
+  onDismiss,
+}: PaymentModalProps) {
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onDismiss}
+    >
+      <View style={modalStyles.overlay}>
+        <View style={modalStyles.sheet}>
+          <Text style={modalStyles.title}>¿Te pagaron el servicio?</Text>
+          <Text style={modalStyles.subtitle}>
+            Total: <Text style={modalStyles.amount}>${totalPrice.toFixed(2)}</Text>
+          </Text>
+
+          {loading ? (
+            <ActivityIndicator color={colors.primary} style={{ marginVertical: 24 }} />
+          ) : (
+            <View style={modalStyles.buttons}>
+              <TouchableOpacity
+                style={[modalStyles.btn, modalStyles.btnPaid]}
+                onPress={() => onSelect('PAID')}
+                activeOpacity={0.85}
+              >
+                <Text style={modalStyles.btnText}>Sí, me pagaron</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[modalStyles.btn, modalStyles.btnUnpaid]}
+                onPress={() => onSelect('UNPAID')}
+                activeOpacity={0.85}
+              >
+                <Text style={modalStyles.btnText}>No me pagaron</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={modalStyles.btnSkip}
+                onPress={onDismiss}
+                activeOpacity={0.7}
+              >
+                <Text style={modalStyles.btnSkipText}>
+                  Mantener estado actual ({PAYMENT_STATUS_LABEL[currentStatus]})
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+// ── Row ───────────────────────────────────────────────────────────────────────
 
 function Row({
   label,
@@ -158,6 +285,8 @@ function Row({
   );
 }
 
+// ── Styles ────────────────────────────────────────────────────────────────────
+
 const rowStyles = StyleSheet.create({
   container: {
     flexDirection: 'row',
@@ -167,8 +296,14 @@ const rowStyles = StyleSheet.create({
     borderBottomColor: '#F3F4F6',
   },
   label: { fontSize: fontSize.sm, color: '#6B7280' },
-  value: { fontSize: fontSize.sm, color: colors.neutral800, fontWeight: fontWeight.medium, flex: 1, textAlign: 'right' },
-  highlight: { color: colors.success, fontWeight: fontWeight.bold },
+  value: {
+    fontSize: fontSize.sm,
+    color: colors.neutral800,
+    fontWeight: fontWeight.medium,
+    flex: 1,
+    textAlign: 'right',
+  },
+  highlight: { color: colors.danger, fontWeight: fontWeight.bold },
 });
 
 const styles = StyleSheet.create({
@@ -209,4 +344,53 @@ const styles = StyleSheet.create({
   actionBtnText: { color: '#fff', fontSize: fontSize.md, fontWeight: fontWeight.semibold },
   notFound: { textAlign: 'center', marginTop: 60, color: '#9CA3AF' },
   errorText: { color: colors.danger, fontSize: fontSize.sm, textAlign: 'center', marginTop: 8 },
+});
+
+const modalStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: 40,
+  },
+  title: {
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.bold,
+    color: colors.neutral800,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontSize: fontSize.sm,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  amount: {
+    fontWeight: fontWeight.bold,
+    color: colors.neutral800,
+  },
+  buttons: { gap: 12 },
+  btn: {
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  btnPaid: { backgroundColor: colors.success },
+  btnUnpaid: { backgroundColor: colors.danger },
+  btnText: { color: '#fff', fontSize: fontSize.md, fontWeight: fontWeight.semibold },
+  btnSkip: {
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  btnSkipText: {
+    fontSize: fontSize.sm,
+    color: '#9CA3AF',
+  },
 });

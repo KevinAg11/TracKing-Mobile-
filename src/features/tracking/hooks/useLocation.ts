@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import * as ExpoLocation from 'expo-location';
 import { locationApi } from '../api/locationApi';
 import { BACKGROUND_LOCATION_TASK } from '../tasks/backgroundLocationTask';
@@ -8,6 +8,13 @@ const INTERVAL_MS = 15_000;
 interface UseLocationOptions {
   /** Tracking only runs when this is true (service status === IN_TRANSIT) */
   active: boolean;
+}
+
+export interface LocationState {
+  latitude: number | null;
+  longitude: number | null;
+  /** Permission was denied by the user */
+  permissionDenied: boolean;
 }
 
 /**
@@ -23,12 +30,17 @@ interface UseLocationOptions {
  *
  * Background task is defined in tasks/backgroundLocationTask.ts and registered
  * in index.ts before the React tree mounts.
+ *
+ * Returns current coords so TrackingMap can display them without a second GPS read.
  */
-export function useLocation({ active }: UseLocationOptions) {
+export function useLocation({ active }: UseLocationOptions): LocationState {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const foregroundGranted = useRef(false);
   const backgroundGranted = useRef(false);
   const stoppedByBackend = useRef(false);
+
+  const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [permissionDenied, setPermissionDenied] = useState(false);
 
   // ── Permission helpers ────────────────────────────────────────────────────
 
@@ -36,6 +48,7 @@ export function useLocation({ active }: UseLocationOptions) {
     if (foregroundGranted.current) return true;
     const { status } = await ExpoLocation.requestForegroundPermissionsAsync();
     foregroundGranted.current = status === 'granted';
+    if (!foregroundGranted.current) setPermissionDenied(true);
     return foregroundGranted.current;
   }, []);
 
@@ -84,10 +97,14 @@ export function useLocation({ active }: UseLocationOptions) {
         accuracy: ExpoLocation.Accuracy.Balanced,
       });
 
+      // Update coords for display (TrackingMap reads these — no second GPS call needed)
+      setCoords({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
+
       await locationApi.send({
         latitude: loc.coords.latitude,
         longitude: loc.coords.longitude,
-        accuracy: loc.coords.accuracy ?? 0,
+        // accuracy is in meters — omit if null/undefined (do NOT send 0)
+        ...(loc.coords.accuracy != null && { accuracy: loc.coords.accuracy }),
       });
     } catch (err: any) {
       if (err?.response?.status === 400) {
@@ -132,6 +149,8 @@ export function useLocation({ active }: UseLocationOptions) {
   useEffect(() => {
     if (!active) {
       stoppedByBackend.current = false; // reset for next activation
+      setCoords(null);
+      setPermissionDenied(false);
       stopAll();
       return;
     }
@@ -149,4 +168,10 @@ export function useLocation({ active }: UseLocationOptions) {
       stopAll();
     };
   }, [active, sendLocation, startBackground, stopAll]);
+
+  return {
+    latitude: coords?.latitude ?? null,
+    longitude: coords?.longitude ?? null,
+    permissionDenied,
+  };
 }

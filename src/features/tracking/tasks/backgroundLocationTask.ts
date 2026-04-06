@@ -9,9 +9,10 @@ export const BACKGROUND_LOCATION_TASK = 'tracking-background-location';
  * Registered in index.ts so it's available before the React tree mounts.
  *
  * Rules:
- * - Only sends location when the task is running (controlled by useLocation)
- * - If backend responds 400 (courier not IN_SERVICE), stops the task
- * - Network errors are swallowed silently to avoid crashing the background process
+ * - Uses sendFromBackground() which reads the token directly from SecureStore,
+ *   avoiding dependency on the Zustand store (may be uninitialized in background).
+ * - If backend responds 400 (courier not IN_SERVICE), stops the task.
+ * - Network errors are swallowed silently to avoid crashing the background process.
  */
 TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }: TaskManager.TaskManagerTaskBody<{ locations: ExpoLocation.LocationObject[] }>) => {
   if (error) {
@@ -24,10 +25,11 @@ TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }: TaskMan
   const { latitude, longitude, accuracy } = data.locations[0].coords;
 
   try {
-    await locationApi.send({
+    await locationApi.sendFromBackground({
       latitude,
       longitude,
-      accuracy: accuracy ?? 0,
+      // accuracy is in meters — omit if null/undefined (do NOT send 0)
+      ...(accuracy != null && { accuracy }),
     });
   } catch (err: any) {
     // 400 = courier not IN_SERVICE — stop background tracking

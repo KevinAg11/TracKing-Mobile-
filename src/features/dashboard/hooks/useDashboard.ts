@@ -44,8 +44,7 @@ export function useDashboard(): DashboardState {
           dashboardApi.getAssignedServices(),
         ]);
 
-        const opStatus =
-          profile.operational_status === 'IN_SERVICE' ? 'AVAILABLE' : profile.operational_status;
+        const opStatus = profile.operational_status;
         setOperationalStatus(opStatus);
         setServices(svcs);
 

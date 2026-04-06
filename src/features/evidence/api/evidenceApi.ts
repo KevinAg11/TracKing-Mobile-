@@ -30,9 +30,10 @@ export const evidenceApi = {
         formData,
         {
           headers: {
-            // No establecer Content-Type manualmente — axios lo setea con el boundary correcto
             'Content-Type': 'multipart/form-data',
           },
+          timeout: 30000,
+          transformRequest: (data) => data, // evita que axios serialice el FormData a JSON
         },
       )
       .then(unwrap);

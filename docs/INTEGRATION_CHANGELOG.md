@@ -818,3 +818,265 @@ Resultado: **18/18 tests pasan**.
 ---
 
 *Actualización: 3 de abril de 2026 — Sistema de tracking v1.2*
+
+---
+
+## 10. Alineación del módulo de tracking con el backend + mapa WebView (Abril 2026)
+
+### Contexto
+
+Se realizó un análisis completo del módulo de tracking comparando la implementación del mobile contra lo que espera el backend. Se encontraron y corrigieron 5 problemas, y se implementó el mapa interactivo usando WebView + Leaflet.
+
+---
+
+### CAMBIO-32 — `sendFromBackground()` en `locationApi` para background task
+
+**Problema:** El background task llamaba `locationApi.send()` que usa `apiClient` (Axios con interceptores). Cuando la app está en background profundo, el proceso JS puede reiniciarse y el store de Zustand queda vacío — sin token, todas las peticiones fallaban silenciosamente con 401.
+
+**Causa raíz:** `apiClient` obtiene el token desde `useAuthStore.getState().accessToken`. Si Zustand no está inicializado, el token es `null`.
+
+**Solución:** Se agregó `locationApi.sendFromBackground()` que lee el token directamente desde `SecureStore` (persiste en el keychain del dispositivo) y usa `axios` crudo sin pasar por el store.
+
+```typescript
+// sendFromBackground — usado por backgroundLocationTask
+const token = await secureStorage.getToken();
+if (!token) return; // sin sesión — skip silencioso
+await axios.post(`${BASE_URL}/api/courier/location`, payload, {
+  headers: { Authorization: `Bearer ${token}` }
+});
+```
+
+**Archivos modificados:**
+- `src/features/tracking/api/locationApi.ts`
+- `src/features/tracking/tasks/backgroundLocationTask.ts`
+
+---
+
+### CAMBIO-33 — `accuracy ?? 0` reemplazado por spread condicional
+
+**Problema:** El mobile enviaba `accuracy: 0` cuando el GPS no reportaba precisión. En el sistema de medición GPS, `0` significa "precisión perfecta de 0 metros" — semánticamente incorrecto. El backend tiene el campo como `@IsOptional()` precisamente para este caso.
+
+**Causa raíz:** Uso de `?? 0` como fallback en lugar de omitir el campo.
+
+**Solución:** Reemplazado por spread condicional en foreground y background:
+
+```typescript
+// Antes
+accuracy: loc.coords.accuracy ?? 0
+
+// Después
+...(loc.coords.accuracy != null && { accuracy: loc.coords.accuracy })
+```
+
+**Archivos modificados:**
+- `src/features/tracking/hooks/useLocation.ts`
+- `src/features/tracking/tasks/backgroundLocationTask.ts`
+
+---
+
+### CAMBIO-34 — `useLocation` ahora retorna coordenadas para display
+
+**Problema:** `useLocation` no retornaba nada. `TrackingMap` hacía su propia lectura GPS independiente, creando dos lecturas simultáneas cuando el tracking estaba activo.
+
+**Solución:** El hook ahora retorna `{ latitude, longitude, permissionDenied }`. Las coordenadas se actualizan en cada ciclo de 15 segundos (mismo momento en que se envían al backend). `TrackingMap` consume estas coords como props — sin segunda lectura GPS.
+
+```typescript
+// useLocation ahora retorna:
+return {
+  latitude: coords?.latitude ?? null,
+  longitude: coords?.longitude ?? null,
+  permissionDenied,
+};
+```
+
+**Archivos modificados:**
+- `src/features/tracking/hooks/useLocation.ts`
+- `src/features/services/screens/ServiceDetailScreen.tsx`
+
+---
+
+### CAMBIO-35 — `TrackingMap` refactorizado: WebView + Leaflet
+
+**Problema:** `TrackingMap` mostraba solo coordenadas en texto plano. No había mapa visual, y el componente hacía su propia lectura GPS duplicando el trabajo de `useLocation`.
+
+**Solución:** Reescrito completamente con:
+
+- **WebView + Leaflet 1.9.4** — mismo tile provider (OpenStreetMap) que el frontend web
+- **Sin lectura GPS propia** — recibe `latitude`, `longitude`, `permissionDenied` como props
+- **`buildLeafletHtml(lat, lng)`** — genera HTML con mapa centrado en la posición del mensajero
+- **`useMemo`** — reconstruye el HTML solo cuando las coords cambian (cada ~15s)
+- **Marcador personalizado** — círculo azul con borde blanco y anillo de glow (mismo estilo que el frontend)
+- **Estados de UI** — sin servicio activo / permiso denegado / esperando GPS / mapa activo
+
+```
+TrackingMap states:
+  !active          → "Sin servicio activo"
+  permissionDenied → "Permiso de ubicación denegado"
+  coords null      → ActivityIndicator "Obteniendo ubicación..."
+  coords available → WebView con mapa Leaflet
+```
+
+**Dependencia instalada:** `react-native-webview` (compatible con Expo SDK 55)
+
+**Archivos modificados/creados:**
+- `src/features/tracking/components/TrackingMap.tsx`
+- `package.json` — `react-native-webview` agregado
+
+---
+
+### CAMBIO-36 — Documentación de fase 06 actualizada
+
+**Problema:** `docs/phase-06-tracking.md` estaba desactualizado — describía una implementación anterior con intervalos de 10s, archivos que no existen y criterios de completitud incorrectos.
+
+**Solución:** Reescrito completamente con:
+- Diagrama de arquitectura actualizado
+- Tabla de endpoint con auth y notas de validación
+- Sección dedicada a la implementación WebView + Leaflet con tabla comparativa vs react-native-maps
+- Estrategia del background task y token desde SecureStore
+- Criterios de completitud actualizados (todos marcados excepto upgrade a react-native-maps)
+
+**Archivos modificados:**
+- `docs/phase-06-tracking.md`
+
+---
+
+### Resumen de cambios en esta sesión
+
+| ID | Cambio | Impacto |
+|---|---|---|
+| CAMBIO-32 | `sendFromBackground()` con token desde SecureStore | Background tracking funciona aunque Zustand esté vacío |
+| CAMBIO-33 | `accuracy ?? 0` → spread condicional | Datos de precisión semánticamente correctos |
+| CAMBIO-34 | `useLocation` retorna coords para display | Elimina doble lectura GPS |
+| CAMBIO-35 | `TrackingMap` con WebView + Leaflet | Mapa interactivo real en lugar de texto de coordenadas |
+| CAMBIO-36 | Documentación fase 06 actualizada | Refleja la implementación real |
+
+---
+
+*Actualización: 6 de abril de 2026 — Tracking map WebView v1.0*
+
+---
+
+## 11. Tracking por estado del mensajero + flujo de pago al finalizar (Abril 2026)
+
+### Contexto
+
+Dos cambios técnicos en el módulo de servicios y tracking:
+1. El trigger del tracking GPS se mueve del estado del servicio (`IN_TRANSIT`) al estado operacional del mensajero (`IN_SERVICE`), alineándose con la regla del backend.
+2. Al finalizar un servicio (`DELIVERED`), se muestra un modal preguntando si el cliente pagó, usando el nuevo endpoint `POST /api/courier/services/:id/payment`.
+
+---
+
+### CAMBIO-37 — Tracking activado por `operationalStatus === 'IN_SERVICE'`
+
+**Problema:** El tracking se activaba cuando `service.status === 'IN_TRANSIT'`. El backend valida que el mensajero esté en estado `IN_SERVICE` para aceptar ubicaciones — no el estado del servicio. Esto podía causar que el tracking se activara antes de que el backend lo permitiera.
+
+**Decisión técnica:** El estado del mensajero (`IN_SERVICE`) es el marcador correcto. El mensajero entra en `IN_SERVICE` cuando se le asigna un servicio, y sale cuando lo entrega. El estado del servicio (`IN_TRANSIT`) es un subestado dentro de ese período.
+
+**Solución:**
+- `OperationalStatus` ahora incluye `'IN_SERVICE'` (antes solo `'AVAILABLE' | 'UNAVAILABLE'`)
+- `ServiceDetailScreen` lee `operationalStatus` del `useAuthStore` y lo pasa a `useLocation`
+- `useLocation({ active: operationalStatus === 'IN_SERVICE' })`
+
+```typescript
+// Antes
+useLocation({ active: service?.status === 'IN_TRANSIT' })
+
+// Después
+const operationalStatus = useAuthStore((s) => s.user?.operationalStatus);
+useLocation({ active: operationalStatus === 'IN_SERVICE' })
+```
+
+**Archivos modificados:**
+- `src/features/auth/types/auth.types.ts` — `IN_SERVICE` agregado al tipo
+- `src/features/services/screens/ServiceDetailScreen.tsx` — trigger actualizado
+
+---
+
+### CAMBIO-38 — Tipos de pago en `services.types.ts`
+
+**Problema:** `Service` tenía `payment_method: string` genérico. Los nuevos campos `payment_status`, `is_settled_courier`, `is_settled_customer` no existían en el tipo.
+
+**Solución:** Tipos actualizados con enums estrictos según `PAYMENT_CHANGES.md`:
+
+```typescript
+export type PaymentMethod = 'CASH' | 'TRANSFER' | 'CREDIT';
+export type PaymentStatus = 'PAID' | 'UNPAID';
+
+export interface Service {
+  // ...
+  payment_method: PaymentMethod;
+  payment_status: PaymentStatus;
+  is_settled_courier: boolean;
+  is_settled_customer: boolean;
+}
+```
+
+**Archivos modificados:**
+- `src/features/services/types/services.types.ts`
+
+---
+
+### CAMBIO-39 — `servicesApi.updatePayment()`
+
+**Problema:** No existía ningún método para llamar al endpoint de cambio de pago.
+
+**Solución:** Agregado `updatePayment(id, payment_status)` que llama a `POST /api/courier/services/:id/payment`.
+
+```typescript
+updatePayment: (id: string, payment_status: PaymentStatus): Promise<Service> =>
+  apiClient
+    .post<ApiResponse<Service>>(`/api/courier/services/${id}/payment`, { payment_status })
+    .then(unwrap),
+```
+
+**Archivos modificados:**
+- `src/features/services/api/servicesApi.ts`
+
+---
+
+### CAMBIO-40 — `performPaymentAction` en `useServiceDetail`
+
+**Problema:** `useServiceDetail` no tenía forma de actualizar el estado de pago.
+
+**Solución:** Agregado `performPaymentAction(serviceId, payment_status)` con su propio estado `paymentLoading`. Actualiza el store con el servicio retornado por el backend.
+
+**Archivos modificados:**
+- `src/features/services/hooks/useServices.ts`
+
+---
+
+### CAMBIO-41 — Modal de pago al finalizar entrega
+
+**Problema:** Al marcar un servicio como `DELIVERED`, no había forma de registrar si el cliente pagó o no.
+
+**Flujo implementado:**
+1. Mensajero presiona "Finalizar entrega"
+2. Backend transiciona el servicio a `DELIVERED`
+3. Se muestra un bottom sheet modal: "¿Te pagaron el servicio?"
+4. Opciones:
+   - **"Sí, me pagaron"** → `POST /api/courier/services/:id/payment { payment_status: "PAID" }`
+   - **"No me pagaron"** → `POST /api/courier/services/:id/payment { payment_status: "UNPAID" }`
+   - **"Mantener estado actual"** → cierra el modal sin llamar al backend
+
+El modal muestra el total del servicio para referencia. Si la llamada al backend falla, muestra un `Alert` no bloqueante.
+
+La pantalla también muestra `payment_method` y `payment_status` en la sección de paquete, con el estado `UNPAID` resaltado en rojo.
+
+**Archivos modificados:**
+- `src/features/services/screens/ServiceDetailScreen.tsx`
+
+---
+
+### Resumen de cambios
+
+| ID | Cambio | Impacto |
+|---|---|---|
+| CAMBIO-37 | Tracking por `IN_SERVICE` del mensajero | Alineado con regla del backend |
+| CAMBIO-38 | Tipos `PaymentMethod`, `PaymentStatus`, `is_settled_*` | Tipos correctos para los nuevos campos |
+| CAMBIO-39 | `servicesApi.updatePayment()` | Endpoint de pago disponible |
+| CAMBIO-40 | `performPaymentAction` en `useServiceDetail` | Lógica de pago encapsulada en el hook |
+| CAMBIO-41 | Modal de pago al finalizar entrega | Mensajero puede registrar cobro en campo |
+
+---
+
+*Actualización: 6 de abril de 2026 — Payment flow v1.0*
