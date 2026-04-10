@@ -1080,3 +1080,358 @@ La pantalla también muestra `payment_method` y `payment_status` en la sección 
 ---
 
 *Actualización: 6 de abril de 2026 — Payment flow v1.0*
+
+---
+
+## 9. Refactor visual — Design System & UI Evolution (Abril 2026)
+
+### Contexto
+
+Se realizó una evolución visual progresiva de la app basada en imágenes de referencia de diseño. El objetivo fue modernizar la UI sin romper ninguna lógica existente. Todos los cambios son puramente de presentación.
+
+> Ver documentación completa en `docs/phase-09-design-system-refactor.md`
+
+---
+
+### CAMBIO-42 — Expansión del Design System
+
+**Problema:** `colors.ts` tenía 7 tokens sin semántica de estados. No existían `spacing.ts`, `shadows.ts` ni componentes UI base reutilizables.
+
+**Solución:** Se crearon/expandieron los siguientes archivos:
+
+- `colors.ts` → 24 tokens con colores semánticos (`successBg`, `warningText`, `infoBg`, `background`, etc.)
+- `typography.ts` → escala ampliada (`xxxl: 36`, `display: 44`), peso `extrabold: '800'`, presets `textStyles`
+- `spacing.ts` → escala base-4 (`xs` a `huge`) + `borderRadius` (`sm` a `full`)
+- `shadows.ts` → sombras cross-platform iOS/Android con preset `primary` (sombra azul para cards hero)
+- `shared/ui/index.ts` → barrel export del design system
+
+**Archivos creados/modificados:**
+- `src/shared/ui/colors.ts`
+- `src/shared/ui/typography.ts`
+- `src/shared/ui/spacing.ts` ← nuevo
+- `src/shared/ui/shadows.ts` ← nuevo
+- `src/shared/ui/index.ts` ← nuevo
+
+---
+
+### CAMBIO-43 — Componentes UI base reutilizables
+
+**Problema:** No existían componentes UI atómicos. Cada pantalla definía sus propios estilos de botones, inputs y badges de forma inconsistente.
+
+**Solución:** Se creó `src/shared/ui/components/` con:
+
+- `Button` — variantes `primary/outline/ghost/success/danger`, tamaños `sm/md/lg`, soporte de ícono y loading
+- `Input` — label, ícono izquierdo/derecho, mensaje de error, toggle de contraseña
+- `StatusBadge` — badge centralizado con variantes semánticas (`success/warning/danger/info/primary/neutral`) y punto indicador
+- `Card` — contenedor base con sombra configurable
+- `index.ts` — barrel export
+
+El `StatusBadge` de `src/features/services/components/StatusBadge.tsx` fue refactorizado como wrapper del centralizado, manteniendo compatibilidad con el tipo `ServiceStatus`.
+
+**Archivos creados:**
+- `src/shared/ui/components/Button.tsx`
+- `src/shared/ui/components/Input.tsx`
+- `src/shared/ui/components/StatusBadge.tsx`
+- `src/shared/ui/components/Card.tsx`
+- `src/shared/ui/components/index.ts`
+
+**Archivos modificados:**
+- `src/features/services/components/StatusBadge.tsx`
+
+---
+
+### CAMBIO-44 — Refactor visual LoginScreen
+
+**Problema:** Login en inglés, sin hero visual, inputs sin íconos, sin toggle de contraseña, sin link de recuperación, sin botón biométrico.
+
+**Solución:** Rediseño visual completo manteniendo toda la lógica de `useLogin`, `react-hook-form` y validaciones:
+
+- Hero con ícono en círculo `primaryBg`
+- Título "Bienvenido, Mensajero" + subtítulo descriptivo
+- Inputs usando el componente `Input` con íconos y toggle de contraseña
+- Link "¿Olvidaste tu contraseña?"
+- Botón "Iniciar Sesión →" con sombra de color primario
+- Botón biométrico circular
+- Footer de versión
+
+**Archivos modificados:**
+- `src/features/auth/screens/LoginScreen.tsx`
+
+---
+
+### CAMBIO-45 — Refactor visual Header del dashboard
+
+**Problema:** Header mostraba nombre pequeño + badge de estado online/offline. Sin fecha, sin avatar, sin notificaciones.
+
+**Solución:**
+- Greeting grande con `fontWeight.extrabold` (`Hola, {nombre}`)
+- Fecha actual formateada en español
+- Botón de notificación con punto rojo indicador
+- Avatar circular con inicial del nombre, borde azul si está online
+
+**Archivos modificados:**
+- `src/features/dashboard/components/Header.tsx`
+
+---
+
+### CAMBIO-46 — Refactor visual KPIBox + nuevo DailyProgress
+
+**Problema:** KPIs sin ícono, alineados al centro, sin diferenciación visual clara. Sin barra de progreso diario.
+
+**Solución:**
+- `KPIBox` ahora acepta prop `icon` (emoji), alineación a la izquierda, layout más compacto
+- Nuevo componente `DailyProgress`: barra de progreso con porcentaje calculado y contador `X/Y Completados`
+
+**Archivos modificados/creados:**
+- `src/features/dashboard/components/KPIBox.tsx`
+- `src/features/dashboard/components/DailyProgress.tsx` ← nuevo
+
+---
+
+### CAMBIO-47 — Refactor visual ActiveServiceCard
+
+**Problema:** Card simple sin jerarquía visual clara. Sin conector de ruta, sin acciones rápidas, sin información del cliente.
+
+**Solución:**
+- Borde azul primario en la card activa
+- Fila superior: badge + ID de orden + hora
+- Conector visual recogida→entrega con línea vertical y puntos de color
+- Footer: avatar con inicial, nombre del cliente, método de pago
+- Botones de acción: llamar (circular) + Navegar (azul sólido)
+
+**Archivos modificados:**
+- `src/features/dashboard/components/ActiveServiceCard.tsx`
+
+---
+
+### CAMBIO-48 — Refactor visual HomeScreen
+
+**Problema:** Home sin tabs de filtro, sin progreso diario, KPIs sin ícono "En Ruta".
+
+**Solución:**
+- Integración de `DailyProgress` entre KPIs y tabs
+- Tabs de filtro Todos/Pendientes/Completados con pill activo
+- KPI "En Ruta" usando el nuevo campo `kpis.inTransit`
+- Fondo `colors.background` (`#F4F6FA`) en lugar de `neutral50`
+- Estado vacío con ícono y subtexto
+
+**Archivos modificados:**
+- `src/features/dashboard/screens/HomeScreen.tsx`
+
+---
+
+### CAMBIO-49 — Campo `inTransit` en KPISummary
+
+**Problema:** `KPISummary` no tenía campo para servicios en tránsito. El KPI "En Ruta" no podía mostrarse.
+
+**Solución:**
+- Agregado `inTransit: number` a la interfaz `KPISummary`
+- `computeKPIs` actualizado: `pending` ahora solo cuenta `ASSIGNED`, `inTransit` cuenta `ACCEPTED + IN_TRANSIT`
+- `DEFAULT_KPIS` actualizado con `inTransit: 0`
+
+**Archivos modificados:**
+- `src/features/dashboard/types/dashboard.types.ts`
+- `src/features/dashboard/api/dashboardApi.ts`
+- `src/features/dashboard/hooks/useDashboard.ts`
+
+---
+
+### CAMBIO-50 — Refactor visual EarningsScreen
+
+**Problema:** Pantalla de ganancias sin estructura de liquidación del día, sin stats de pedidos/tiempo/distancia, sin secciones de ingresos y deducciones, sin CTA fijo.
+
+**Solución:**
+- Header con título "Liquidación del Día" + botón calendario
+- Hero card azul con sombra `shadows.primary`, monto en `fontSize.xxxl`, badge de variación
+- Stats row: 3 chips blancos (Pedidos / Tiempo / Distancia)
+- Secciones "Ingresos" y "Deducciones" con `IncomeRow` (ícono en cuadro, título, subtítulo, monto)
+- CTA fijo "Transferir a mi Cuenta →" con `position: absolute` en la parte inferior
+
+**Archivos modificados:**
+- `src/features/earnings/screens/EarningsScreen.tsx`
+
+---
+
+### Resumen de cambios
+
+| ID | Cambio | Archivos |
+|---|---|---|
+| CAMBIO-42 | Design system expandido | `colors.ts`, `typography.ts`, `spacing.ts`, `shadows.ts`, `index.ts` |
+| CAMBIO-43 | Componentes UI base | `Button`, `Input`, `StatusBadge`, `Card` en `shared/ui/components/` |
+| CAMBIO-44 | LoginScreen rediseñado | `LoginScreen.tsx` |
+| CAMBIO-45 | Header con greeting, fecha, avatar | `Header.tsx` |
+| CAMBIO-46 | KPIBox con ícono + DailyProgress | `KPIBox.tsx`, `DailyProgress.tsx` |
+| CAMBIO-47 | ActiveServiceCard con ruta y acciones | `ActiveServiceCard.tsx` |
+| CAMBIO-48 | HomeScreen con tabs y progreso | `HomeScreen.tsx` |
+| CAMBIO-49 | `inTransit` en KPISummary | `dashboard.types.ts`, `dashboardApi.ts`, `useDashboard.ts` |
+| CAMBIO-50 | EarningsScreen con hero, stats, CTA | `EarningsScreen.tsx` |
+
+---
+
+*Actualización: 10 de abril de 2026 — Design System Refactor v1.0*
+
+---
+
+## 10. Dashboard funcional — Conexión real de UI a datos (Abril 2026)
+
+### Contexto
+
+Tras el refactor visual (sección 9), se detectó que el módulo de dashboard tenía la UI completa pero con lógica incompleta o simulada. Se realizó una segunda pasada para conectar cada elemento visual a datos reales y eliminar todo valor hardcodeado.
+
+---
+
+### CAMBIO-51 — Corrección del interceptor de refresh para rutas de auth
+
+**Problema:** Al fallar el login con credenciales incorrectas (401), el interceptor de respuesta intentaba hacer `POST /api/auth/refresh`. Ese refresh también fallaba con 401, lo que volvía a disparar el interceptor, generando un loop hasta que el timeout de 10s cortaba la ejecución. La app se quedaba cargando indefinidamente.
+
+**Causa raíz:** El interceptor de 401 no excluía las rutas de autenticación. Un 401 en `/api/auth/login` no significa sesión expirada — significa credenciales incorrectas.
+
+**Solución:** Se agregó la condición `!isAuthEndpoint` al guard del interceptor:
+
+```ts
+const isAuthEndpoint =
+  originalRequest.url?.includes('/api/auth/login') ||
+  originalRequest.url?.includes('/api/auth/refresh');
+
+if (status === 401 && !originalRequest._retry && !isAuthEndpoint) {
+  // refresh logic
+}
+```
+
+Adicionalmente, se corrigió el orden de lectura del mensaje de error: NestJS pone el mensaje útil en `message` (no en `error`), por lo que se invirtió la prioridad: `responseData?.message ?? responseData?.error`.
+
+**Archivos modificados:**
+- `src/core/api/apiClient.ts`
+
+---
+
+### CAMBIO-52 — Tabs del dashboard sin funcionalidad real
+
+**Problema:** `HomeScreen` tenía tres tabs (Todos / Pendientes / Completados) con estado `activeTab` local, pero ese estado nunca se usaba para filtrar servicios. Los tabs eran puramente decorativos.
+
+**Causa raíz:** La lógica de filtrado no estaba implementada ni en el componente ni en el hook.
+
+**Solución:** La lógica de filtrado se centralizó en `useDashboard` mediante `TAB_STATUSES`:
+
+```ts
+const TAB_STATUSES: Record<DashboardTab, ServiceStatus[]> = {
+  all:       ['ASSIGNED', 'ACCEPTED', 'IN_TRANSIT', 'DELIVERED'],
+  pending:   ['ASSIGNED', 'ACCEPTED'],
+  completed: ['DELIVERED'],
+};
+```
+
+El hook ahora expone `filteredServices`, `activeTab` y `setActiveTab`. `HomeScreen` consume estos valores directamente.
+
+**Archivos modificados:**
+- `src/features/dashboard/hooks/useDashboard.ts`
+- `src/features/dashboard/screens/HomeScreen.tsx`
+
+---
+
+### CAMBIO-53 — HomeScreen: ScrollView reemplazado por FlatList
+
+**Problema:** `HomeScreen` usaba `ScrollView` para mostrar la lista de servicios, lo que no es eficiente para listas variables y no permite `renderItem` tipado.
+
+**Solución:** Reemplazado por `FlatList` con `ListHeaderComponent` para los KPIs, progreso y tabs. La lista de servicios se renderiza con `ServiceCard` existente, reutilizando el componente sin duplicar código.
+
+**Archivos modificados:**
+- `src/features/dashboard/screens/HomeScreen.tsx`
+
+---
+
+### CAMBIO-54 — Fallback hardcodeado `|| 10` en DailyProgress
+
+**Problema:** `HomeScreen` pasaba `total={totalOrders || 10}` a `DailyProgress`. Cuando no había servicios, la barra mostraba `0/10` en lugar de `0/0`.
+
+**Causa raíz:** Fallback defensivo incorrecto — `DailyProgress` ya maneja `total=0` correctamente (`pct = 0`).
+
+**Solución:** Eliminado el fallback. `totalOrders` se calcula como la suma real de los tres KPIs:
+
+```ts
+const totalOrders = kpis.pending + kpis.inTransit + kpis.completed;
+```
+
+**Archivos modificados:**
+- `src/features/dashboard/screens/HomeScreen.tsx`
+
+---
+
+### CAMBIO-55 — ActiveServiceCard sin navegación funcional
+
+**Problema:** `ActiveServiceCard` recibía props `onPress` y `onNavigate` pero `HomeScreen` no las implementaba. Tocar la card o el botón "Navegar" no hacía nada.
+
+**Causa raíz:** Las props estaban definidas pero sin handler en el componente padre.
+
+**Solución:** `HomeScreen` implementa `handleServicePress` que navega a la tab `Orders` usando `useNavigation<BottomTabNavigationProp>`. El `ServicesNavigator` dentro de esa tab maneja el stack de detalle.
+
+```ts
+function handleServicePress(_service: Service) {
+  navigation.navigate('Orders');
+}
+```
+
+La `ActiveServiceCard` solo se muestra en el tab "Todos" para evitar duplicación con la lista filtrada.
+
+**Archivos modificados:**
+- `src/features/dashboard/screens/HomeScreen.tsx`
+
+---
+
+### CAMBIO-56 — Tiempo hardcodeado en ActiveServiceCard
+
+**Problema:** La card mostraba `new Date().toLocaleTimeString(...)` como si fuera la hora del servicio. Era la hora actual del dispositivo, no un dato real del servicio.
+
+**Causa raíz:** El tipo `Service` no tiene campo de fecha/hora. El dato era inventado.
+
+**Solución:** Eliminado el elemento de tiempo y su estilo asociado (`time`).
+
+**Archivos modificados:**
+- `src/features/dashboard/components/ActiveServiceCard.tsx`
+
+---
+
+### CAMBIO-57 — Estado vacío genérico para todos los tabs
+
+**Problema:** El estado vacío mostraba siempre "Sin servicio activo / Tus pedidos aparecerán aquí" independientemente del tab activo.
+
+**Solución:** Mensaje contextual según el tab:
+
+```ts
+activeTab === 'completed' ? 'Sin entregas completadas'
+: activeTab === 'pending'  ? 'Sin pedidos pendientes'
+: 'Sin servicios asignados'
+```
+
+**Archivos modificados:**
+- `src/features/dashboard/screens/HomeScreen.tsx`
+
+---
+
+### CAMBIO-58 — Import `useRef` sin usar en useDashboard
+
+**Problema:** `useDashboard` importaba `useRef` de React pero no lo usaba.
+
+**Solución:** Eliminado del import.
+
+**Archivos modificados:**
+- `src/features/dashboard/hooks/useDashboard.ts`
+
+---
+
+### Resumen de cambios
+
+| ID | Cambio | Archivos |
+|---|---|---|
+| CAMBIO-51 | Interceptor de refresh excluye rutas de auth | `apiClient.ts` |
+| CAMBIO-52 | Tabs del dashboard conectados a filtrado real | `useDashboard.ts`, `HomeScreen.tsx` |
+| CAMBIO-53 | ScrollView → FlatList con ServiceCard | `HomeScreen.tsx` |
+| CAMBIO-54 | Eliminado fallback `\|\| 10` en DailyProgress | `HomeScreen.tsx` |
+| CAMBIO-55 | Navegación real desde ActiveServiceCard | `HomeScreen.tsx` |
+| CAMBIO-56 | Eliminado `new Date()` hardcodeado en card | `ActiveServiceCard.tsx` |
+| CAMBIO-57 | Empty state contextual por tab | `HomeScreen.tsx` |
+| CAMBIO-58 | `useRef` sin usar eliminado | `useDashboard.ts` |
+
+---
+
+*Actualización: 10 de abril de 2026 — Dashboard funcional v1.0*

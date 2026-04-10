@@ -6,7 +6,7 @@ import { handleApiError } from '@/shared/utils/errorHandler';
  * celular, no a la PC. Se usa la IP local de la máquina de desarrollo.
  * Si cambias de red, actualiza esta IP con la nueva dirección de tu PC.
  */
-const BASE_URL = 'http://192.168.1.10:3000';
+const BASE_URL = 'http://192.168.1.11:3000';
 
 /** Wrapper estandar de todas las respuestas del backend */
 export interface ApiResponse<T> {
@@ -60,7 +60,12 @@ apiClient.interceptors.response.use(
     const status = error.response?.status;
 
     // 401: attempt token refresh once
-    if (status === 401 && !originalRequest._retry) {
+    // Skip refresh for auth endpoints — login/refresh failures should go straight to error handler
+    const isAuthEndpoint =
+      originalRequest.url?.includes('/api/auth/login') ||
+      originalRequest.url?.includes('/api/auth/refresh');
+
+    if (status === 401 && !originalRequest._retry && !isAuthEndpoint) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           pendingQueue.push({
@@ -108,10 +113,11 @@ apiClient.interceptors.response.use(
     // Map status codes to user-facing messages
     // BUG-12 FIX: backend error shape is { success: false, statusCode, error }
     // NestJS validation errors: { message: string[] | string, error, statusCode }
+    // NestJS auth errors: { message: string, error: "Unauthorized", statusCode: 401 }
     const responseData = error.response?.data as
       | { error?: string; message?: string | string[] }
       | undefined;
-    const rawMessage = responseData?.error ?? responseData?.message;
+    const rawMessage = responseData?.message ?? responseData?.error;
     const serverMessage = Array.isArray(rawMessage)
       ? rawMessage[0]
       : rawMessage;

@@ -1,7 +1,8 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { colors } from '@/shared/ui/colors';
 import { fontSize, fontWeight } from '@/shared/ui/typography';
+import { spacing } from '@/shared/ui/spacing';
 import type { OperationalStatus } from '@/features/auth/types/auth.types';
 
 interface HeaderProps {
@@ -9,19 +10,39 @@ interface HeaderProps {
   status: OperationalStatus;
 }
 
+function getFormattedDate(): string {
+  return new Date().toLocaleDateString('es-MX', {
+    weekday: undefined,
+    day: 'numeric',
+    month: 'long',
+  });
+}
+
+function getInitial(name: string): string {
+  return name.charAt(0).toUpperCase();
+}
+
 export function Header({ name, status }: HeaderProps) {
   const isOnline = status === 'AVAILABLE';
+  const today = getFormattedDate();
+
   return (
     <View style={styles.container}>
-      <View>
+      {/* Left: greeting */}
+      <View style={styles.left}>
         <Text style={styles.greeting}>Hola, {name}</Text>
-        <Text style={styles.role}>Mensajero</Text>
+        <Text style={styles.date}>Hoy, {today}</Text>
       </View>
-      <View style={[styles.badge, isOnline ? styles.online : styles.offline]}>
-        <View style={[styles.dot, isOnline ? styles.dotOnline : styles.dotOffline]} />
-        <Text style={[styles.badgeText, isOnline ? styles.textOnline : styles.textOffline]}>
-          {isOnline ? 'En línea' : 'Fuera de línea'}
-        </Text>
+
+      {/* Right: avatar + notification */}
+      <View style={styles.right}>
+        <TouchableOpacity style={styles.notifBtn} activeOpacity={0.7}>
+          <Text style={styles.notifIcon}>🔔</Text>
+          <View style={styles.notifDot} />
+        </TouchableOpacity>
+        <View style={[styles.avatar, isOnline ? styles.avatarOnline : styles.avatarOffline]}>
+          <Text style={styles.avatarText}>{getInitial(name)}</Text>
+        </View>
       </View>
     </View>
   );
@@ -32,34 +53,65 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#fff',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.white,
   },
+  left: { flex: 1 },
   greeting: {
-    fontSize: fontSize.lg,
-    fontWeight: fontWeight.bold,
-    color: colors.neutral800,
+    fontSize: fontSize.xxl,
+    fontWeight: fontWeight.extrabold,
+    color: colors.neutral900,
   },
-  role: {
+  date: {
     fontSize: fontSize.sm,
-    color: '#6B7280',
+    color: colors.neutral500,
     marginTop: 2,
   },
-  badge: {
+  right: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 20,
-    gap: 5,
+    gap: spacing.md,
   },
-  online: { backgroundColor: '#DCFCE7' },
-  offline: { backgroundColor: '#F3F4F6' },
-  dot: { width: 8, height: 8, borderRadius: 4 },
-  dotOnline: { backgroundColor: colors.success },
-  dotOffline: { backgroundColor: '#9CA3AF' },
-  badgeText: { fontSize: fontSize.xs, fontWeight: fontWeight.medium },
-  textOnline: { color: '#15803D' },
-  textOffline: { color: '#6B7280' },
+  notifBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.neutral100,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notifIcon: { fontSize: 18 },
+  notifDot: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.danger,
+    borderWidth: 1.5,
+    borderColor: colors.white,
+  },
+  avatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+  },
+  avatarOnline: {
+    backgroundColor: colors.primaryBg,
+    borderColor: colors.primary,
+  },
+  avatarOffline: {
+    backgroundColor: colors.neutral100,
+    borderColor: colors.neutral200,
+  },
+  avatarText: {
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.bold,
+    color: colors.primary,
+  },
 });

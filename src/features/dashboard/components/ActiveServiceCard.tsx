@@ -2,53 +2,89 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { colors } from '@/shared/ui/colors';
 import { fontSize, fontWeight } from '@/shared/ui/typography';
-import type { Service, ServiceStatus } from '@/features/services/types/services.types';
+import { spacing, borderRadius } from '@/shared/ui/spacing';
+import { shadows } from '@/shared/ui/shadows';
+import { StatusBadge } from '@/features/services/components/StatusBadge';
+import type { Service } from '@/features/services/types/services.types';
 
 interface ActiveServiceCardProps {
   service: Service;
   onPress?: () => void;
+  onNavigate?: () => void;
 }
 
-const STATUS_LABEL: Record<ServiceStatus, string> = {
-  ASSIGNED: 'Asignado',
-  ACCEPTED: 'Aceptado',
-  IN_TRANSIT: 'En tránsito',
-  DELIVERED: 'Entregado',
-};
+function getInitial(name: string): string {
+  return name.charAt(0).toUpperCase();
+}
 
-const STATUS_COLOR: Record<ServiceStatus, string> = {
-  ASSIGNED: colors.warning,
-  ACCEPTED: colors.primary,
-  IN_TRANSIT: colors.primaryLight,
-  DELIVERED: colors.success,
-};
-
-export function ActiveServiceCard({ service, onPress }: ActiveServiceCardProps) {
+export function ActiveServiceCard({ service, onPress, onNavigate }: ActiveServiceCardProps) {
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.85}>
-      <View style={styles.row}>
-        <Text style={styles.title}>Servicio activo</Text>
-        <View style={[styles.statusBadge, { backgroundColor: STATUS_COLOR[service.status] + '22' }]}>
-          <Text style={[styles.statusText, { color: STATUS_COLOR[service.status] }]}>
-            {STATUS_LABEL[service.status]}
-          </Text>
+    <TouchableOpacity
+      style={styles.card}
+      onPress={onPress}
+      activeOpacity={0.9}
+    >
+      {/* ── Top row: badge + order id ── */}
+      <View style={styles.topRow}>
+        <View style={styles.topLeft}>
+          <StatusBadge status={service.status} />
+          <Text style={styles.orderId}>#{service.id.slice(-4).toUpperCase()}</Text>
         </View>
       </View>
 
-      <View style={styles.divider} />
+      {/* ── Route: origin → destination ── */}
+      <View style={styles.route}>
+        {/* Origin */}
+        <View style={styles.routeRow}>
+          <View style={styles.dotOrigin} />
+          <View style={styles.routeTextBlock}>
+            <Text style={styles.routeLabel}>RECOGIDA</Text>
+            <Text style={styles.routeAddress} numberOfLines={1}>
+              {service.origin_address}
+            </Text>
+          </View>
+        </View>
 
-      <View style={styles.addressRow}>
-        <View style={styles.dot} />
-        <Text style={styles.address} numberOfLines={1}>{service.origin_address}</Text>
-      </View>
-      <View style={styles.addressRow}>
-        <View style={[styles.dot, styles.dotDest]} />
-        <Text style={styles.address} numberOfLines={1}>{service.destination_address}</Text>
+        {/* Connector line */}
+        <View style={styles.connector} />
+
+        {/* Destination */}
+        <View style={styles.routeRow}>
+          <View style={styles.dotDest} />
+          <View style={styles.routeTextBlock}>
+            <Text style={[styles.routeLabel, { color: colors.primary }]}>ENTREGA</Text>
+            <Text style={[styles.routeAddress, styles.routeAddressBold]} numberOfLines={1}>
+              {service.destination_address}
+            </Text>
+          </View>
+        </View>
       </View>
 
+      {/* ── Footer: client + actions ── */}
       <View style={styles.footer}>
-        <Text style={styles.recipient}>{service.destination_name}</Text>
-        <Text style={styles.price}>${service.delivery_price.toFixed(2)}</Text>
+        <View style={styles.clientRow}>
+          <View style={styles.clientAvatar}>
+            <Text style={styles.clientInitial}>{getInitial(service.destination_name)}</Text>
+          </View>
+          <View>
+            <Text style={styles.clientName}>{service.destination_name}</Text>
+            <Text style={styles.clientSub}>{service.payment_method}</Text>
+          </View>
+        </View>
+
+        <View style={styles.actions}>
+          <TouchableOpacity style={styles.callBtn} activeOpacity={0.7}>
+            <Text style={styles.callIcon}>📞</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.navigateBtn}
+            onPress={onNavigate}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.navigateIcon}>🗺</Text>
+            <Text style={styles.navigateText}>Navegar</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -56,72 +92,139 @@ export function ActiveServiceCard({ service, onPress }: ActiveServiceCardProps) 
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#fff',
-    borderRadius: 14,
-    padding: 16,
-    marginHorizontal: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 3,
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.xl,
+    padding: spacing.lg,
+    marginHorizontal: spacing.lg,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    ...shadows.md,
   },
-  row: {
+
+  // Top row
+  topRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: spacing.lg,
   },
-  title: {
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.semibold,
-    color: colors.neutral800,
+  topLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
-  statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 20,
-  },
-  statusText: {
+  orderId: {
     fontSize: fontSize.xs,
-    fontWeight: fontWeight.semibold,
+    color: colors.neutral500,
+    fontWeight: fontWeight.medium,
   },
-  divider: {
-    height: 1,
-    backgroundColor: '#F3F4F6',
-    marginVertical: 12,
-  },
-  addressRow: {
+
+  // Route
+  route: { marginBottom: spacing.lg },
+  routeRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 6,
-    gap: 8,
+    alignItems: 'flex-start',
+    gap: spacing.md,
   },
-  dot: {
+  dotOrigin: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.neutral400,
+    marginTop: 4,
+  },
+  dotDest: {
     width: 10,
     height: 10,
     borderRadius: 5,
     backgroundColor: colors.primary,
+    marginTop: 4,
   },
-  dotDest: {
-    backgroundColor: colors.danger,
+  connector: {
+    width: 1.5,
+    height: 16,
+    backgroundColor: colors.neutral200,
+    marginLeft: 4,
+    marginVertical: 2,
   },
-  address: {
-    flex: 1,
+  routeTextBlock: { flex: 1 },
+  routeLabel: {
+    fontSize: fontSize.xs,
+    fontWeight: fontWeight.semibold,
+    color: colors.neutral400,
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  routeAddress: {
     fontSize: fontSize.sm,
-    color: '#374151',
+    color: colors.neutral600,
   },
+  routeAddressBold: {
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
+    color: colors.neutral900,
+  },
+
+  // Footer
   footer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 8,
+    alignItems: 'center',
   },
-  recipient: {
-    fontSize: fontSize.sm,
-    color: '#6B7280',
+  clientRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    flex: 1,
   },
-  price: {
+  clientAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.primaryBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clientInitial: {
     fontSize: fontSize.md,
     fontWeight: fontWeight.bold,
-    color: colors.success,
+    color: colors.primary,
+  },
+  clientName: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.semibold,
+    color: colors.neutral800,
+  },
+  clientSub: {
+    fontSize: fontSize.xs,
+    color: colors.neutral500,
+  },
+  actions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  callBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.neutral100,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  callIcon: { fontSize: 18 },
+  navigateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.lg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    gap: spacing.xs,
+  },
+  navigateIcon: { fontSize: 14 },
+  navigateText: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.semibold,
+    color: colors.white,
   },
 });

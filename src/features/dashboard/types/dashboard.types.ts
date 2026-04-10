@@ -12,6 +12,7 @@ export interface CourierProfile {
 
 export interface KPISummary {
   pending: number;
+  inTransit: number;
   completed: number;
   earnings: number;
 }

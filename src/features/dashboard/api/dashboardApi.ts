@@ -30,7 +30,8 @@ export const dashboardApi = {
    */
   computeKPIs(services: Service[]): KPISummary {
     return {
-      pending: services.filter((s) => s.status === 'ASSIGNED' || s.status === 'ACCEPTED').length,
+      pending: services.filter((s) => s.status === 'ASSIGNED').length,
+      inTransit: services.filter((s) => s.status === 'IN_TRANSIT' || s.status === 'ACCEPTED').length,
       completed: services.filter((s) => s.status === 'DELIVERED').length,
       earnings: 0, // earnings come from /api/liquidations/earnings
     };
